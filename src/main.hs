@@ -37,7 +37,8 @@ main = putStrLn "hello"
 newtype Haxl a = Haxl { unHaxl :: IO (Result a) }
                  deriving (Functor)
 
-data Result a = Done a | Blocked (Haxl a)
+data Result a = Done a
+              | Blocked (Haxl a)
                  deriving (Functor)
 
 instance Monad Haxl where
@@ -202,7 +203,12 @@ class (Typeable1 req, Hashable1 req, Eq1 req) => DataSource req where
   fetch :: DataState req -> [BlockedFetch req] -> IO ()
 
 
+-- AZ: I think this stores the original request (hence Eq1) and the
+-- MVar the result will eventually be written to when the IO
+-- completes.
 data BlockedFetch req = forall a . BlockedFetch (req a) (MVar a)
+-- Question: how does a BlockedFetch come into existence? Can only be
+-- through the dataFetch call interacting with the core.
 
 
 -- It is Core’s job to keep track of requests submitted via dataFetch
@@ -212,21 +218,31 @@ data BlockedFetch req = forall a . BlockedFetch (req a) (MVar a)
 
 -- Core has a single way to issue a request
 -- The only side effects happen here
+-- Note: I think this should be putting stuff in the scheduler
 dataFetch :: DataSource req => req a -> Haxl a
 dataFetch r = do
   addRequest r
   Haxl (return (Blocked (Haxl (getResult r))))
 
 -- Three ways that a data source interacts with core:
---   * issuing a data fetch request
---   * persistent state
---   * fetching the data
+--   * issuing a data fetch request [addRequest?]
+--   * persistent state             [via DataState req]
+--   * fetching the data            [via fetch...getResult]
 
+
+
+-- AZ new guess: addRequest/getResult belong in roundRobin, to manage
+-- the state properly.
+-- AZ Guess: Pass the request to the data source, store the state that
+-- changes pertaining to the data source, as well as keep track of the
+-- fact of the request in a BlockedFetch item.
 addRequest :: DataSource req => req a -> Haxl a
 addRequest = undefined
 
+-- AZ guess: should end up calling fetch on the given datasource.
 getResult :: DataSource req => req a -> IO (Result a)
 getResult = undefined
+  -- fetch s []
 
 -- ---------------------------------------------------------------------
 
@@ -240,11 +256,20 @@ data FriendsReq a where
 instance DataSource FriendsReq where
   data DataState FriendsReq = Ss
 
-  -- fetch :: [BlockedFetch FriendsReq] -> IO ()
-  fetch s bfs = do
-    return ()
+  -- fetch :: DataState req -> [BlockedFetch req] -> IO ()
+  fetch = fetchFriendsDs
 
+fetchFriendsDs :: DataState FriendsReq -> [BlockedFetch FriendsReq] -> IO ()
+fetchFriendsDs s bfs = do
+  mapM_ fetchOne bfs
+  return ()
 
+fetchOne :: BlockedFetch FriendsReq -> IO ()
+fetchOne (BlockedFetch (FriendsOf id) mvar) = do
+  -- NOTE: calculating v could make use of external IO
+  let v = [id,Id "foo"] -- Friends with self :)
+  putMVar mvar v
+  return ()
 
 -- ---------------------------------------------------------------------
 -- Admin stuff
@@ -266,14 +291,21 @@ deriving instance Typeable1 FriendsReq
 ------------------------------------------------------------------------
 -- Simplistic core by AZ
 
--- the core data structure
 
--- a needs to be Typeable
-data CoreState a = CoreState
-                  { pending :: [a]
-                  }
+-- testCore :: IO ()
+testCore = do
+  runCore $ friendsOf (Id "Alan")
+  return ()
 
--- coreDataFetch :: DataSource req => req a -> Haxl a
+runCore :: Haxl a -> Haxl ()
+runCore q = roundRobin (core q)
+
+core :: Haxl a -> Thread Haxl a
+core q = do
+  lift q
+
+
+-- --------------------------------------------------------------------
 
 friendsOf :: Id -> Haxl [Id]
 friendsOf id = do
