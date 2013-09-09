@@ -18,11 +18,13 @@ executable haxl-play
   main-is:             main.hs
   -- other-modules:       
   build-depends:       base ==4.6.*
+                       , async
                        , containers
                        , free
                        , text
                        , hashable
                        , hashable-extras
+                       , network
                        , transformers
   Hs-Source-Dirs:      src
 

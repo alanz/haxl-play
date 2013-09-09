@@ -264,9 +264,12 @@ fetchFriendsDs s bfs = do
   mapM_ fetchOne bfs
   return ()
 
+-- AZ: this only makes sense if we write to the MVar here. Else no
+-- other return path
 fetchOne :: BlockedFetch FriendsReq -> IO ()
 fetchOne (BlockedFetch (FriendsOf id) mvar) = do
-  -- NOTE: calculating v could make use of external IO
+  -- NOTE: calculating v could make use of external IO, and could be
+  -- blocked in which case the put to the MVar would not occur
   let v = [id,Id "foo"] -- Friends with self :)
   putMVar mvar v
   return ()
@@ -303,7 +306,6 @@ runCore q = roundRobin (core q)
 core :: Haxl a -> Thread Haxl a
 core q = do
   lift q
-
 
 -- --------------------------------------------------------------------
 
@@ -358,7 +360,7 @@ isCalled = undefined
 
 
 data Id = Id String
-          deriving (Eq,Show)
+          deriving (Eq,Show,Ord)
 
 instance Hashable Id where
   hashWithSalt m (Id a) = hashWithSalt m a
