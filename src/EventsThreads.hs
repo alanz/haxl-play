@@ -19,10 +19,10 @@ main = putStrLn "hello"
 -- ---------------------------------------------------------------------
 -- The CPS Monad M
 
-newtype M a = M ((a->Trace)->Trace)
+newtype M a = M ((a -> Trace) -> Trace)
 instance Monad M where
   return x = M (\c -> c x)
-  (M g) >>= f = M (\c -> g (\a -> let M h =f a in h c))
+  (M g) >>= f = M (\c -> g (\a -> let M h = f a in h c))
 
 -- Converting monadic computation to a trace
 build_trace ::M a-> Trace
@@ -32,7 +32,7 @@ build_trace (M f) = f (\c-> SYS_RET)
 -- A list of system calls used in the multithreaded programming style:
 
 -- sys_nbio f  -- Perform a nonblocking IO function f
-sys_nbio f = M(\c->SYS_NBIO (do x<-f;return (c x)))
+sys_nbio f = M (\c -> SYS_NBIO (do x <- f;return (c x)))
 
 -- sys_fork c  -- Create a new thread running function c
 sys_fork f = M (\c->SYS_FORK (build_trace f) (c ()) )
